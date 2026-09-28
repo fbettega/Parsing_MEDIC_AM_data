@@ -13,65 +13,25 @@ list.files("R", pattern = "\\.R$", full.names = TRUE) %>%
   walk(source)
 
 
-parse_medicam_files <- function(folder_path = "data/medicam"){
-  
-  iteration_file <- list.files(path = folder_path,full.names = TRUE)
-  
-  result_medoc <- lapply(iteration_file, function(path_x) {
-    # print(path_x)
-    
-    df_fun <- readxl::read_xls(path_x, sheet = 2) %>% 
-      janitor::clean_names() %>% 
-      mutate(
-        # Formatage du CIP13 sur 13 caractères avec zéro initial si besoin
-        cip13 = str_pad(as.character(cip13), width = 13, pad = "0")
-      )
-    
-    # 1. On détermine la colonne présente AVANT de passer au pipe
-    col_atc <- if ("code_atc" %in% names(df_fun)) "code_atc" else "code_6"
-    col_classe <- if ("classe_atc" %in% names(df_fun)) "classe_atc" else "classe"
-    
-    res <- df_fun %>% 
-      rename(code_atc = all_of(col_atc),
-             classe_atc = all_of(col_classe),
-      ) %>%
-      # 2. Filtrage propre via la variable dynamique
-      filter(code_atc %in% liste_atc) %>% 
-      
-      # 3. Sélection sécurisée des colonnes
-      select(
-        cip13, 
-        nom_court, 
-        code_atc,
-        # produit,
-        classe_atc,
-        starts_with("nombre_de_boites_remboursees_")
-      ) %>% 
-      
-      # 4. Pivotement au format long
-      pivot_longer(
-        cols = matches("^nombre_de_boites_remboursees_\\d{4}_\\d{2}$"),
-        names_to = c("annee", "mois"),
-        names_pattern = "^nombre_de_boites_remboursees_(\\d{4})_(\\d{2})$",
-        values_to = "nb_boite"
-      )
-    
-    return(res)
-  }) %>% 
-    bind_rows()
-  return(result_medoc)
-}
-
-
-
 ref_cip <- GET_dose_bdd(rerun = TRUE, bdd_path = "data/fichier_intermediaire/base_dosage.csv")
 
 # path_x <- iteration_file[1]#"data/M�dic'AM mensuel 2017 - 2eme semestre_tous r�gimes.xls"
 
-result_medoc <- parse_medicam_files()
+result_medoc <- parse_medicam_files(liste_atc = liste_atc)
+
+
+result_medoc_dosage <- add_dosage_info(
+  data = result_medoc, 
+  ref_cip = ref_cip
+)
 
 
 
+res_trimestre_cip <- aggregate_medicam(
+  data = result_medoc, 
+  freq = "trimestre", 
+  by_cip = TRUE
+)
 
 
 write.csv(result_medoc,"outpout/donne_detect_penurie_lola.csv")
